@@ -10,3 +10,5 @@ dist/
 .mypy_cache/
 deps/
 node_modules/
+tests/fixtures/user_details.json
+tests/fixtures/locations.json
