@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import WattsApiClient, WattsApiError
 from .auth import WattsAuth, WattsAuthError, WattsTokenExpiredError
+from .models import WattsDevice
 from .const import (
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -25,7 +26,7 @@ from .const import (
 _LOGGER = __import__("logging").getLogger(__name__)
 
 
-class WattsDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
+class WattsDataUpdateCoordinator(DataUpdateCoordinator[dict[str, WattsDevice]]):
     """Polls the Watts API and manages token lifecycle."""
 
     location_id: str
@@ -86,7 +87,7 @@ class WattsDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
         except WattsAuthError as exc:
             raise ConfigEntryAuthFailed(str(exc)) from exc
 
-    async def _async_update_data(self) -> list[dict[str, Any]]:
+    async def _async_update_data(self) -> dict[str, WattsDevice]:
         try:
             access_token = await self._ensure_token()
             client = WattsApiClient(self._session, access_token)
@@ -98,7 +99,7 @@ class WattsDataUpdateCoordinator(DataUpdateCoordinator[list[dict[str, Any]]]):
             )
             devices = await client.get_devices(self.location_id)
             _LOGGER.debug("Fetched %d device(s)", len(devices))
-            return devices
+            return {d.device_id: d for d in devices}
         except ConfigEntryAuthFailed:
             raise
         except (WattsApiError, WattsAuthError) as exc:
