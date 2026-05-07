@@ -14,7 +14,7 @@ from homeassistant.components.climate import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -156,9 +156,21 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: WattsDataUpdateCoordinator = entry.runtime_data
-    async_add_entities(
-        WattsClimateEntity(coordinator, device) for device in coordinator.data
-    )
+    known_device_ids: set[str] = set()
+
+    @callback
+    def _async_add_new() -> None:
+        new = [
+            WattsClimateEntity(coordinator, device_id)
+            for device_id in coordinator.data
+            if device_id not in known_device_ids
+        ]
+        if new:
+            known_device_ids.update(e._device_id for e in new)
+            async_add_entities(new)
+
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new))
+    _async_add_new()
 
 
 # ---------------------------------------------------------------------------
@@ -175,32 +187,30 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
     def __init__(
         self,
         coordinator: WattsDataUpdateCoordinator,
-        device: dict[str, Any],
+        device_id: str,
     ) -> None:
         super().__init__(coordinator)
-        self._device_id: str = device["deviceId"]
-        self._attr_unique_id = self._device_id
+        self._device_id = device_id
+        self._attr_unique_id = device_id
+        device = coordinator.data[device_id]
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._device_id)},
-            name=device["name"],
+            identifiers={(DOMAIN, device_id)},
+            name=device.name,
             model=MODEL_NAMES.get(
-                device["modelNumber"], f"Tekmar WiFi Thermostat {device['modelNumber']}"
+                device.model_number, f"Tekmar WiFi Thermostat {device.model_number}"
             ),
             manufacturer="Watts Home",
         )
 
-    def _device(self) -> dict[str, Any]:
-        for d in self.coordinator.data:
-            if d["deviceId"] == self._device_id:
-                return d
-        raise KeyError(self._device_id)
+    def _device(self) -> WattsDevice:
+        return self.coordinator.data[self._device_id]  # KeyError → available=False
 
     @property
     def available(self) -> bool:
         if not self.coordinator.last_update_success:
             return False
         try:
-            return bool(self._device()["isConnected"])
+            return self._device().is_connected
         except KeyError:
             return False
 
@@ -244,18 +254,18 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
 
     @property
     def min_temp(self) -> float:
-        target = (self._device().get("data") or {}).get("Target")
-        return float(target["Min"]) if target is not None else 40.0
+        d = self._device()
+        return d.data.target.min if d.data and d.data.target else 40.0
 
     @property
     def max_temp(self) -> float:
-        target = (self._device().get("data") or {}).get("Target")
-        return float(target["Max"]) if target is not None else 95.0
+        d = self._device()
+        return d.data.target.max if d.data and d.data.target else 95.0
 
     @property
     def target_temperature_step(self) -> float:
-        target = (self._device().get("data") or {}).get("Target")
-        return float(target["Steps"]) if target is not None else 1.0
+        d = self._device()
+        return d.data.target.steps if d.data and d.data.target else 1.0
 
     @property
     def temperature_unit(self) -> str:
@@ -263,13 +273,13 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
 
     @property
     def fan_mode(self) -> str | None:
-        fan = (self._device().get("data") or {}).get("Fan")
-        return str(fan["Val"]) if fan else None
+        d = self._device()
+        return d.data.fan.val if d.data and d.data.fan else None
 
     @property
     def fan_modes(self) -> list[str] | None:
-        fan = (self._device().get("data") or {}).get("Fan")
-        return list(fan["Enum"]) if fan else None
+        d = self._device()
+        return d.data.fan.enum if d.data and d.data.fan else None
 
     @property
     def supported_features(self) -> ClimateEntityFeature:
