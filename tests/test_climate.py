@@ -213,6 +213,57 @@ _NULL_DEVICE: dict[str, Any] = {
 }
 
 
+_NULL_DATA_FIELD_DEVICE: dict[str, Any] = {
+    "deviceId": "null-data-field-test",
+    "name": "Null Data Field Device",
+    "modelNumber": "561",
+    "isConnected": False,
+    "data": None,
+}
+
+
+class TestNullDataField:
+    """Guards against device['data'] itself being null (API returns this when device is offline)."""
+
+    def test_hvac_modes_returns_off(self) -> None:
+        assert device_hvac_modes(_NULL_DATA_FIELD_DEVICE) == [HVACMode.OFF]
+
+    def test_hvac_mode_returns_off(self) -> None:
+        assert device_hvac_mode(_NULL_DATA_FIELD_DEVICE) == HVACMode.OFF
+
+    def test_hvac_action_returns_none(self) -> None:
+        assert device_hvac_action(_NULL_DATA_FIELD_DEVICE) is None
+
+    def test_current_temperature_returns_none(self) -> None:
+        assert device_current_temperature(_NULL_DATA_FIELD_DEVICE) is None
+
+    def test_current_humidity_returns_none(self) -> None:
+        assert device_current_humidity(_NULL_DATA_FIELD_DEVICE) is None
+
+    def test_target_temperature_returns_none(self) -> None:
+        assert device_target_temperature(_NULL_DATA_FIELD_DEVICE) is None
+
+    def test_target_temp_high_returns_none(self) -> None:
+        assert device_target_temp_high(_NULL_DATA_FIELD_DEVICE) is None
+
+    def test_target_temp_low_returns_none(self) -> None:
+        assert device_target_temp_low(_NULL_DATA_FIELD_DEVICE) is None
+
+    def test_temperature_unit_returns_celsius(self) -> None:
+        assert (
+            device_temperature_unit(_NULL_DATA_FIELD_DEVICE)
+            == UnitOfTemperature.CELSIUS
+        )
+
+    def test_supported_features_does_not_raise(self) -> None:
+        feats = device_supported_features(_NULL_DATA_FIELD_DEVICE)
+        assert feats & ClimateEntityFeature.TURN_ON
+        assert feats & ClimateEntityFeature.TURN_OFF
+
+    def test_schedule_active_returns_false(self) -> None:
+        assert device_schedule_active(_NULL_DATA_FIELD_DEVICE) is False
+
+
 class TestNullData:
     def test_hvac_modes_returns_off(self) -> None:
         assert device_hvac_modes(_NULL_DEVICE) == [HVACMode.OFF]

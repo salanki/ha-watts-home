@@ -28,7 +28,7 @@ async def async_setup_entry(
     coordinator: WattsDataUpdateCoordinator = entry.runtime_data
     entities: list[SensorEntity] = []
     for device in coordinator.data:
-        sensors = device["data"]["Sensors"]
+        sensors = (device.get("data") or {}).get("Sensors") or {}
         if sensors.get("Outdoor", {}).get("Status") == "Okay":
             entities.append(WattsOutdoorTempSensor(coordinator, device))
         if sensors.get("RH", {}).get("Status") == "Okay":
@@ -66,7 +66,7 @@ class WattsOutdoorTempSensor(
         self._device_id: str = device["deviceId"]
         self._attr_unique_id = f"{self._device_id}_outdoor_temp"
         self._attr_device_info = _device_info(device)
-        unit = device["data"]["TempUnits"]["Val"]
+        unit = ((device.get("data") or {}).get("TempUnits") or {}).get("Val")
         self._attr_native_unit_of_measurement = (
             UnitOfTemperature.FAHRENHEIT if unit == "F" else UnitOfTemperature.CELSIUS
         )
@@ -79,18 +79,22 @@ class WattsOutdoorTempSensor(
 
     @property
     def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
         try:
             d = self._device()
+            sensors = (d.get("data") or {}).get("Sensors") or {}
             return (
                 bool(d["isConnected"])
-                and d["data"]["Sensors"].get("Outdoor", {}).get("Status") == "Okay"
+                and sensors.get("Outdoor", {}).get("Status") == "Okay"
             )
         except KeyError:
             return False
 
     @property
     def native_value(self) -> float | None:
-        outdoor = self._device()["data"]["Sensors"].get("Outdoor", {})
+        sensors = (self._device().get("data") or {}).get("Sensors") or {}
+        outdoor = sensors.get("Outdoor", {})
         if outdoor.get("Status") == "Okay":
             return float(outdoor["Val"])
         return None
@@ -123,18 +127,21 @@ class WattsHumiditySensor(CoordinatorEntity[WattsDataUpdateCoordinator], SensorE
 
     @property
     def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
         try:
             d = self._device()
+            sensors = (d.get("data") or {}).get("Sensors") or {}
             return (
-                bool(d["isConnected"])
-                and d["data"]["Sensors"].get("RH", {}).get("Status") == "Okay"
+                bool(d["isConnected"]) and sensors.get("RH", {}).get("Status") == "Okay"
             )
         except KeyError:
             return False
 
     @property
     def native_value(self) -> float | None:
-        rh = self._device()["data"]["Sensors"].get("RH", {})
+        sensors = (self._device().get("data") or {}).get("Sensors") or {}
+        rh = sensors.get("RH", {})
         if rh.get("Status") == "Okay":
             return float(rh["Val"])
         return None

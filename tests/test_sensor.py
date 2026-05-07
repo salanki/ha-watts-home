@@ -103,3 +103,41 @@ class TestSensorCounts:
         )
         # From fixture: only "Living" (563) has RH Status=Okay
         assert rh_count == 1
+
+
+_NULL_DATA_FIELD_DEVICE: dict[str, Any] = {
+    "deviceId": "null-data-field",
+    "name": "Null Data Field Device",
+    "modelNumber": "561",
+    "isConnected": False,
+    "data": None,
+}
+
+
+class TestNullDataSensor:
+    """Guards against device['data'] being null in sensor setup and entity methods."""
+
+    def test_outdoor_eligibility_skips_null_data_device(
+        self, devices: list[dict[str, Any]]
+    ) -> None:
+        """async_setup_entry must not crash when a device has data=null."""
+        all_devices = [*devices, _NULL_DATA_FIELD_DEVICE]
+        outdoor_count = sum(
+            1
+            for d in all_devices
+            if (d.get("data") or {}).get("Sensors", {}).get("Outdoor", {}).get("Status")
+            == "Okay"
+        )
+        assert outdoor_count == 4
+
+    def test_rh_eligibility_skips_null_data_device(
+        self, devices: list[dict[str, Any]]
+    ) -> None:
+        all_devices = [*devices, _NULL_DATA_FIELD_DEVICE]
+        rh_count = sum(
+            1
+            for d in all_devices
+            if (d.get("data") or {}).get("Sensors", {}).get("RH", {}).get("Status")
+            == "Okay"
+        )
+        assert rh_count == 1

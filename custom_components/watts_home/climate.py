@@ -50,7 +50,7 @@ _HA_ACTION_MAP: dict[str, HVACAction] = {
 
 
 def device_hvac_modes(device: dict[str, Any]) -> list[HVACMode]:
-    mode = device["data"].get("Mode")
+    mode = (device.get("data") or {}).get("Mode")
     if mode is None:
         return [HVACMode.OFF]
     watts_enums: list[str] = mode["Enum"]
@@ -62,7 +62,7 @@ def device_hvac_modes(device: dict[str, Any]) -> list[HVACMode]:
 
 
 def device_hvac_mode(device: dict[str, Any]) -> HVACMode:
-    mode = device["data"].get("Mode")
+    mode = (device.get("data") or {}).get("Mode")
     if mode is None:
         return HVACMode.OFF
     ha = WATTS_TO_HA_MODE.get(mode["Val"], "off")
@@ -70,7 +70,7 @@ def device_hvac_mode(device: dict[str, Any]) -> HVACMode:
 
 
 def device_hvac_action(device: dict[str, Any]) -> HVACAction | None:
-    state = device["data"].get("State")
+    state = (device.get("data") or {}).get("State")
     if state is None:
         return None
     op: str = state["Op"]
@@ -81,7 +81,7 @@ def device_hvac_action(device: dict[str, Any]) -> HVACAction | None:
 
 
 def device_current_temperature(device: dict[str, Any]) -> float | None:
-    sensors = device["data"].get("Sensors")
+    sensors = (device.get("data") or {}).get("Sensors")
     if sensors is None:
         return None
     room = sensors.get("Room")
@@ -93,7 +93,7 @@ def device_current_temperature(device: dict[str, Any]) -> float | None:
 
 
 def device_current_humidity(device: dict[str, Any]) -> float | None:
-    sensors = device["data"].get("Sensors")
+    sensors = (device.get("data") or {}).get("Sensors")
     if sensors is None:
         return None
     rh = sensors.get("RH")
@@ -105,7 +105,7 @@ def device_current_humidity(device: dict[str, Any]) -> float | None:
 def device_target_temperature(device: dict[str, Any]) -> float | None:
     """Single setpoint — used in heat or cool mode."""
     mode = device_hvac_mode(device)
-    target = device["data"].get("Target")
+    target = (device.get("data") or {}).get("Target")
     if target is None:
         return None
     if mode == HVACMode.COOL:
@@ -116,7 +116,7 @@ def device_target_temperature(device: dict[str, Any]) -> float | None:
 
 def device_target_temp_high(device: dict[str, Any]) -> float | None:
     """Cool setpoint for heat_cool mode."""
-    target = device["data"].get("Target")
+    target = (device.get("data") or {}).get("Target")
     if target is None:
         return None
     v = target.get("Cool")
@@ -125,7 +125,7 @@ def device_target_temp_high(device: dict[str, Any]) -> float | None:
 
 def device_target_temp_low(device: dict[str, Any]) -> float | None:
     """Heat setpoint for heat_cool mode."""
-    target = device["data"].get("Target")
+    target = (device.get("data") or {}).get("Target")
     if target is None:
         return None
     v = target.get("Heat")
@@ -133,7 +133,7 @@ def device_target_temp_low(device: dict[str, Any]) -> float | None:
 
 
 def device_temperature_unit(device: dict[str, Any]) -> str:
-    temp_units = device["data"].get("TempUnits")
+    temp_units = (device.get("data") or {}).get("TempUnits")
     if temp_units is None:
         return UnitOfTemperature.CELSIUS
     val = temp_units["Val"]
@@ -149,14 +149,14 @@ def device_supported_features(device: dict[str, Any]) -> ClimateEntityFeature:
     modes = device_hvac_modes(device)
     if HVACMode.HEAT_COOL in modes:
         features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
-    fan = device["data"].get("Fan")
+    fan = (device.get("data") or {}).get("Fan")
     if fan and fan.get("Enum"):
         features |= ClimateEntityFeature.FAN_MODE
     return features
 
 
 def device_schedule_active(device: dict[str, Any]) -> bool:
-    sched = device["data"].get("SchedEnable")
+    sched = (device.get("data") or {}).get("SchedEnable")
     if sched is None:
         return False
     val: str = sched["Val"]
@@ -215,6 +215,8 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
 
     @property
     def available(self) -> bool:
+        if not self.coordinator.last_update_success:
+            return False
         try:
             return bool(self._device()["isConnected"])
         except KeyError:
@@ -260,17 +262,17 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
 
     @property
     def min_temp(self) -> float:
-        target = self._device()["data"].get("Target")
+        target = (self._device().get("data") or {}).get("Target")
         return float(target["Min"]) if target is not None else 40.0
 
     @property
     def max_temp(self) -> float:
-        target = self._device()["data"].get("Target")
+        target = (self._device().get("data") or {}).get("Target")
         return float(target["Max"]) if target is not None else 95.0
 
     @property
     def target_temperature_step(self) -> float:
-        target = self._device()["data"].get("Target")
+        target = (self._device().get("data") or {}).get("Target")
         return float(target["Steps"]) if target is not None else 1.0
 
     @property
@@ -279,12 +281,12 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
 
     @property
     def fan_mode(self) -> str | None:
-        fan = self._device()["data"].get("Fan")
+        fan = (self._device().get("data") or {}).get("Fan")
         return str(fan["Val"]) if fan else None
 
     @property
     def fan_modes(self) -> list[str] | None:
-        fan = self._device()["data"].get("Fan")
+        fan = (self._device().get("data") or {}).get("Fan")
         return list(fan["Enum"]) if fan else None
 
     @property
