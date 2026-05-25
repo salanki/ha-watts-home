@@ -64,7 +64,8 @@ def device_hvac_mode(device: WattsDevice) -> HVACMode:
     if device.data is None or device.data.mode is None:
         return HVACMode.OFF
     ha = WATTS_TO_HA_MODE.get(device.data.mode.val, "off")
-    return _HA_MODE_MAP.get(ha, HVACMode.OFF)
+    # "Emer" maps to "emergency_heat" which has no HVACMode — fall back to HEAT
+    return _HA_MODE_MAP.get(ha, HVACMode.HEAT)
 
 
 def device_hvac_action(device: WattsDevice) -> HVACAction | None:
@@ -236,19 +237,19 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
 
     @property
     def target_temperature(self) -> float | None:
-        if HVACMode.HEAT_COOL in self.hvac_modes:
+        if self.hvac_mode == HVACMode.HEAT_COOL:
             return None
         return device_target_temperature(self._device())
 
     @property
     def target_temperature_high(self) -> float | None:
-        if HVACMode.HEAT_COOL not in self.hvac_modes:
+        if self.hvac_mode != HVACMode.HEAT_COOL:
             return None
         return device_target_temp_high(self._device())
 
     @property
     def target_temperature_low(self) -> float | None:
-        if HVACMode.HEAT_COOL not in self.hvac_modes:
+        if self.hvac_mode != HVACMode.HEAT_COOL:
             return None
         return device_target_temp_low(self._device())
 
@@ -289,6 +290,13 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
         watts_mode = HA_TO_WATTS_MODE[hvac_mode]
         client = await self.coordinator.async_get_client()
         await client.set_mode(self._device_id, watts_mode)
+
+        def _update(d: WattsDevice) -> None:
+            if d.data and d.data.mode:
+                d.data.mode.val = watts_mode
+
+        self.coordinator.optimistic_update(self._device_id, _update)
+        await client.refresh_device(self._device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_on(self) -> None:
@@ -304,19 +312,38 @@ class WattsClimateEntity(CoordinatorEntity[WattsDataUpdateCoordinator], ClimateE
         sched = device_schedule_active(device)
         client = await self.coordinator.async_get_client()
 
+        current_heat = device.data.target.heat if device.data and device.data.target and device.data.target.heat is not None else 40.0
+        current_cool = device.data.target.cool if device.data and device.data.target and device.data.target.cool is not None else 95.0
+
         if ATTR_TARGET_TEMP_HIGH in kwargs or ATTR_TARGET_TEMP_LOW in kwargs:
-            heat = kwargs.get(ATTR_TARGET_TEMP_LOW)
-            cool = kwargs.get(ATTR_TARGET_TEMP_HIGH)
+            heat = kwargs.get(ATTR_TARGET_TEMP_LOW, current_heat)
+            cool = kwargs.get(ATTR_TARGET_TEMP_HIGH, current_cool)
         else:
             temp = kwargs.get(ATTR_TEMPERATURE)
             mode = device_hvac_mode(device)
-            heat = temp if mode == HVACMode.HEAT else None
-            cool = temp if mode == HVACMode.COOL else None
+            if mode == HVACMode.COOL:
+                heat, cool = current_heat, temp
+            else:
+                heat, cool = temp, current_cool
+
+        def _update(d: WattsDevice) -> None:
+            if d.data and d.data.target:
+                d.data.target.heat = heat
+                d.data.target.cool = cool
 
         await client.set_temperature(self._device_id, sched, heat, cool)
+        self.coordinator.optimistic_update(self._device_id, _update)
+        await client.refresh_device(self._device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         client = await self.coordinator.async_get_client()
         await client.set_fan_mode(self._device_id, fan_mode)
+
+        def _update(d: WattsDevice) -> None:
+            if d.data and d.data.fan:
+                d.data.fan.val = fan_mode
+
+        self.coordinator.optimistic_update(self._device_id, _update)
+        await client.refresh_device(self._device_id)
         await self.coordinator.async_request_refresh()
