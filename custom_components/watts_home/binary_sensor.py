@@ -32,7 +32,11 @@ def device_fan_running(device: WattsDevice) -> bool | None:
 
 
 def device_radiant_heating(device: WattsDevice) -> bool | None:
-    """Radiant floor calling heat. None if no floor sensor."""
+    """Radiant floor calling heat. None if no floor sensor.
+
+    Floor zone valve only opens in Heat, Auto, or Emer modes.
+    In Cool or Off mode the setpoint is visible but the valve stays closed.
+    """
     if device.data is None or device.data.sensors is None:
         return None
     floor = device.data.sensors.floor
@@ -40,6 +44,8 @@ def device_radiant_heating(device: WattsDevice) -> bool | None:
         return None
     if device.data.schedule is None or device.data.schedule.floor is None:
         return None
+    if device.data.mode is None or device.data.mode.val not in ("Heat", "Auto", "Emer"):
+        return False
     target = device.data.schedule.floor.w
     return target > 0 and floor.val < target
 

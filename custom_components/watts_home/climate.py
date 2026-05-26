@@ -429,11 +429,15 @@ class WattsFloorClimateEntity(
         d = self._device()
         if (
             d.data
+            and d.data.mode
             and d.data.sensors
             and d.data.sensors.floor
             and d.data.schedule
             and d.data.schedule.floor
         ):
+            mode = d.data.mode.val
+            if mode not in ("Heat", "Auto", "Emer"):
+                return HVACAction.IDLE
             target = d.data.schedule.floor.w
             current = d.data.sensors.floor.val
             if target > 0 and current < target:
