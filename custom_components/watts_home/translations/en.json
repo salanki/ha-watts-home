@@ -39,9 +39,9 @@
         "name": "Humidifier"
       }
     },
-    "number": {
-      "floor_min": {
-        "name": "Floor Min"
+    "climate": {
+      "floor": {
+        "name": "Floor"
       }
     },
     "switch": {
